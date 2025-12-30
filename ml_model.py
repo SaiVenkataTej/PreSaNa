@@ -1,11 +1,13 @@
 """
 PreSaNa
-Handles synthetic data generation and Linear Regression model training.
+Handles synthetic data generation, model training (Linear & Random Forest), and artifact export.
 """
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 import json
+import joblib
 import os
 
 def generate_training_data(n_samples=500):
@@ -32,38 +34,57 @@ def generate_training_data(n_samples=500):
 
 def train_and_export():
     """
-    Trains the Linear Regression model, extracts the learned weights,
-    and exports them for use by the backend agent.
+    Trains Linear Regression and Random Forest models.
+    Exports trained models (.pkl) and metadata (.json).
     """
     print("PreSaNa: Generating synthetic training data...")
     df = generate_training_data()
     
-    X = df[['distance', 'traffic', 'quality']]
+    # Preprocessing
     # We transform quality to 'inverse quality' for the linear relationship we want: (11-quality)
-    X_transformed = X.copy()
-    X_transformed['quality_inv'] = 11 - X_transformed['quality']
-    X_final = X_transformed[['distance', 'traffic', 'quality_inv']]
+    X = df[['distance', 'traffic', 'quality']].copy()
+    X['quality_inv'] = 11 - X['quality']
     
-    y = df['cost']
+    # Feature set for models: distance, traffic, quality_inv
+    X_train = X[['distance', 'traffic', 'quality_inv']]
+    y_train = df['cost']
     
+    # --- Linear Regression ---
     print("PreSaNa: Training Linear Regression model...")
-    model = LinearRegression()
-    model.fit(X_final, y)
+    linear_model = LinearRegression()
+    linear_model.fit(X_train, y_train)
     
-    weights = {
-        'w_distance': float(model.coef_[0]),
-        'w_traffic': float(model.coef_[1]),
-        'w_quality_inv': float(model.coef_[2]),
-        'intercept': float(model.intercept_)
+    # --- Random Forest ---
+    print("PreSaNa: Training Random Forest model...")
+    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+    rf_model.fit(X_train, y_train)
+    
+    # --- Export Models ---
+    print("PreSaNa: Exporting models...")
+    joblib.dump(linear_model, 'model_artifacts/linear_model.pkl')
+    joblib.dump(rf_model, 'model_artifacts/rf_model.pkl')
+    
+    # --- Export Metadata ---
+    metadata = {
+        'linear': {
+            'w_distance': float(linear_model.coef_[0]),
+            'w_traffic': float(linear_model.coef_[1]),
+            'w_quality_inv': float(linear_model.coef_[2]),
+            'intercept': float(linear_model.intercept_)
+        },
+        'rf': {
+            'feature_importances': {
+                'distance': float(rf_model.feature_importances_[0]),
+                'traffic': float(rf_model.feature_importances_[1]),
+                'quality_inv': float(rf_model.feature_importances_[2])
+            }
+        }
     }
     
-    print(f"Learned Weights: {weights}")
+    with open('model_artifacts/model_metadata.json', 'w') as f:
+        json.dump(metadata, f, indent=4)
     
-    with open('model_weights.json', 'w') as f:
-        json.dump(weights, f)
-    
-    print("Weights exported to model_weights.json")
-    return weights
+    print("Training complete. Models and metadata exported.")
 
 if __name__ == "__main__":
     train_and_export()

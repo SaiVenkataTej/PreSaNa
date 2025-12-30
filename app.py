@@ -6,27 +6,53 @@ from flask import Flask, render_template, jsonify, request
 import json
 import random
 import os
+import joblib
+import pandas as pd
 
 app = Flask(__name__)
 
-# Load trained weights
-WEIGHTS_PATH = 'model_weights.json'
-DEFAULT_WEIGHTS = {'w_distance': 0.3, 'w_traffic': 0.5, 'w_quality_inv': 0.2, 'intercept': 0.0}
+# Constants
+MODEL_METADATA_PATH = 'model_artifacts/model_metadata.json'
+LINEAR_MODEL_PATH = 'model_artifacts/linear_model.pkl'
+RF_MODEL_PATH = 'model_artifacts/rf_model.pkl'
 
-def load_weights():
-    """Reads learned Linear Regression weights from a JSON file."""
-    if os.path.exists(WEIGHTS_PATH):
-        with open(WEIGHTS_PATH, 'r') as f:
-            return json.load(f)
-    return DEFAULT_WEIGHTS
+# Global storage for models and metadata
+models = {}
+feature_metadata = {}
+
+def load_resources():
+    """Loads trained models and metadata on startup."""
+    global models, feature_metadata
+    
+    # Load Metadata
+    if os.path.exists(MODEL_METADATA_PATH):
+        with open(MODEL_METADATA_PATH, 'r') as f:
+            feature_metadata = json.load(f)
+    else:
+        print("WARNING: model_metadata.json not found. Models may not work correctly.")
+
+    # Load Models
+    try:
+        models['linear'] = joblib.load(LINEAR_MODEL_PATH)
+        print("Loaded Linear Regression model.")
+    except Exception as e:
+        print(f"Failed to load Linear model: {e}")
+
+    try:
+        models['rf'] = joblib.load(RF_MODEL_PATH)
+        print("Loaded Random Forest model.")
+    except Exception as e:
+        print(f"Failed to load Random Forest model: {e}")
+
+# Load resources immediately
+load_resources()
 
 class GoalBasedAgent:
     """
     PreSaNa Agent responsible for network management and path optimization.
-    Uses learned weights to evaluate route utilities.
+    Uses trained models to evaluate route utils.
     """
     def __init__(self):
-        self.weights = load_weights()
         self.nodes = ['A', 'B', 'C', 'D', 'E']
         self.connections = [
             ('A', 'B'), ('A', 'C'), ('A', 'D'),
@@ -51,10 +77,9 @@ class GoalBasedAgent:
             data[f"{conn[1]}-{conn[0]}"] = edge_info  # Bidirectional network
         self.edge_data = data
 
-    def calculate_cost(self, start, end):
+    def calculate_cost(self, start, end, model_type='linear'):
         """
-        Calculates the utility-based cost between two nodes using the learned formula:
-        Cost = w1*dist + w2*traffic + w3*(11-qual) + intercept
+        Calculates the cost between two nodes using the selected model.
         """
         key = f"{start}-{end}"
         if key not in self.edge_data:
@@ -64,14 +89,26 @@ class GoalBasedAgent:
         if data['blocked'] == "Yes":
             return 999999
         
-        # learned formula: w1*dist + w2*traffic + w3*(11-qual) + intercept
-        cost = (data['distance'] * self.weights['w_distance']) + \
-               (data['traffic'] * self.weights['w_traffic']) + \
-               ((11 - data['quality']) * self.weights['w_quality_inv']) + \
-               self.weights['intercept']
-        return round(cost, 2)
+        # Prepare features: distance, traffic, quality_inv
+        # Input format must matchtraining data: [[distance, traffic, 11-quality]]
+        features = pd.DataFrame([{
+            'distance': data['distance'],
+            'traffic': data['traffic'],
+            'quality_inv': 11 - data['quality']
+        }])
+        
+        try:
+            model = models.get(model_type)
+            if not model:
+                return 999999  # Fail safe if model missing
+            
+            cost = model.predict(features)[0]
+            return round(float(cost), 2)
+        except Exception as e:
+            print(f"Prediction Error: {e}")
+            return 999999
 
-    def find_best_route(self, start, dest):
+    def find_best_route(self, start, dest, model_type):
         """
         Search engine for the PreSaNa agent. 
         Evaluates direct and 1-stop paths to find the global minimum cost.
@@ -79,10 +116,10 @@ class GoalBasedAgent:
         logs = []
         possible_paths = []
         
-        logs.append(f"PreSaNa Goal: Minimize cost from {start} to {dest} using learned weights.")
+        logs.append(f"PreSaNa Goal: Minimize cost from {start} to {dest} using {model_type} model.")
         
         # Check direct
-        direct_cost = self.calculate_cost(start, dest)
+        direct_cost = self.calculate_cost(start, dest, model_type)
         if direct_cost < 999999:
             possible_paths.append({'path': [start, dest], 'cost': direct_cost})
             logs.append(f"Checking direct route: {start} -> {dest} | Cost: {direct_cost}")
@@ -94,8 +131,8 @@ class GoalBasedAgent:
             if mid == start or mid == dest:
                 continue
             
-            c1 = self.calculate_cost(start, mid)
-            c2 = self.calculate_cost(mid, dest)
+            c1 = self.calculate_cost(start, mid, model_type)
+            c2 = self.calculate_cost(mid, dest, model_type)
             
             if c1 < 999999 and c2 < 999999:
                 total = round(c1 + c2, 2)
@@ -120,7 +157,7 @@ def index():
 def get_network():
     return jsonify({
         'connections': agent.edge_data,
-        'weights': agent.weights
+        'metadata': feature_metadata
     })
 
 @app.route('/api/randomize')
@@ -133,11 +170,12 @@ def run_agent():
     data = request.json
     start = data.get('start')
     dest = data.get('dest')
+    model_type = data.get('model_type', 'linear')  # Default to linear
     
     if not start or not dest or start == dest:
         return jsonify({'error': 'Invalid nodes'}), 400
         
-    best, logs = agent.find_best_route(start, dest)
+    best, logs = agent.find_best_route(start, dest, model_type)
     return jsonify({
         'best': best,
         'logs': logs

@@ -8,14 +8,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingOverlay = document.getElementById('loading');
     const reportSection = document.getElementById('report-section');
     const reportContent = document.getElementById('report-content');
+    const modelSelect = document.getElementById('model-select');
+
+    // Global state for metadata
+    let globalMetadata = {};
 
     // --- Data Fetching & Rendering ---
 
     const fetchNetwork = async () => {
-        const response = await fetch('/api/network');
-        const data = await response.json();
-        renderNetwork(data.connections);
-        renderWeights(data.weights);
+        try {
+            const response = await fetch('/api/network');
+            const data = await response.json();
+            globalMetadata = data.metadata;
+            renderNetwork(data.connections);
+            updateModelInfo(); // Render info for currently selected model
+        } catch (err) {
+            console.error("Failed to fetch network:", err);
+        }
     };
 
     const renderNetwork = (connections) => {
@@ -29,34 +38,47 @@ document.addEventListener('DOMContentLoaded', () => {
             seen.add(sortedNodes);
 
             const row = document.createElement('tr');
-            const cost = calculateLocalCost(info);
-
+            // Cost is dynamic based on model, so we show '?' or basic info here
+            // or we could show a rough calc if we want.
+            
             row.innerHTML = `
                 <td>${key.replace('-', ' ↔ ')}</td>
                 <td>${info.distance}</td>
                 <td>${info.traffic}%</td>
                 <td>${info.quality}</td>
                 <td class="${info.blocked === 'Yes' ? 'status-blocked' : 'status-ok'}">${info.blocked}</td>
-                <td>${info.blocked === 'Yes' ? '∞' : cost}</td>
+                <td>--</td> 
             `;
             tableBody.appendChild(row);
         });
     };
 
-    const renderWeights = (weights) => {
-        weightsDiv.innerHTML = `
-            <strong>Learned Cost Weights (Linear Regression):</strong><br>
-            Distance: ${weights.w_distance.toFixed(3)} | 
-            Traffic: ${weights.w_traffic.toFixed(3)} | 
-            Inverse Quality: ${weights.w_quality_inv.toFixed(3)} | 
-            Intercept: ${weights.intercept.toFixed(3)}
-        `;
-    };
+    const updateModelInfo = () => {
+        const modelType = modelSelect.value;
+        const info = globalMetadata[modelType];
+        
+        if (!info) {
+            weightsDiv.innerHTML = '<em>No metadata available for this model.</em>';
+            return;
+        }
 
-    // Note: We only use this for UI display, backend does the real math
-    const calculateLocalCost = (info) => {
-        // Just a dummy calc for the table until weights are loaded globally in JS if needed
-        return "Calculated"; 
+        if (modelType === 'linear') {
+            weightsDiv.innerHTML = `
+                <strong>Learned Weights (Linear Regression):</strong><br>
+                Distance: ${info.w_distance.toFixed(3)} | 
+                Traffic: ${info.w_traffic.toFixed(3)} | 
+                Inverse Quality: ${info.w_quality_inv.toFixed(3)} | 
+                Intercept: ${info.intercept.toFixed(3)}
+            `;
+        } else if (modelType === 'rf') {
+            const imps = info.feature_importances;
+            weightsDiv.innerHTML = `
+                <strong>Feature Importances (Random Forest):</strong><br>
+                Distance: ${imps.distance.toFixed(3)} | 
+                Traffic: ${imps.traffic.toFixed(3)} | 
+                Inverse Quality: ${imps.quality_inv.toFixed(3)}
+            `;
+        }
     };
 
     const log = (text, type = '') => {
@@ -68,9 +90,14 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Event Handlers ---
+    
+    // Update info when model changes
+    modelSelect.addEventListener('change', updateModelInfo);
+
     runBtn.addEventListener('click', async () => {
         const start = document.getElementById('start-node').value;
         const dest = document.getElementById('dest-node').value;
+        const modelType = modelSelect.value;
 
         if (start === dest) {
             alert('Start and Destination cannot be the same!');
@@ -79,13 +106,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         loadingOverlay.style.display = 'flex';
         consoleArea.innerHTML = '';
-        log('--- PreSaNa Session Started ---', 'header');
+        log(`--- PreSaNa Session Started (${modelType === 'linear' ? 'Linear Regression' : 'Random Forest'}) ---`, 'header');
 
         try {
             const response = await fetch('/api/run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ start, dest })
+                body: JSON.stringify({ start, dest, model_type: modelType })
             });
 
             const data = await response.json();
@@ -93,9 +120,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Artificial delay for effect
             await new Promise(r => setTimeout(r, 800));
 
-            data.logs.forEach((msg, i) => {
-                setTimeout(() => log(msg), i * 150);
-            });
+            if (data.logs) {
+                data.logs.forEach((msg, i) => {
+                    setTimeout(() => log(msg), i * 150);
+                });
+            }
 
             setTimeout(() => {
                 if (data.best) {
@@ -106,21 +135,24 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p>Optimal Route Found: <strong>${path}</strong></p>
                         <p>Total Estimated Cost: <strong>${data.best.cost}</strong></p>
                         <p style="margin-top: 1rem; font-size: 0.9rem; color: #94a3b8;">
-                            This route was selected using PreSaNa's learned weights.                             It balances distance, traffic congestion, and road quality to achieve the goal.
+                            Route optimized using <strong>${modelType === 'linear' ? 'Linear Regression' : 'Random Forest'}</strong> logic.
                         </p>
                     `;
                     log('SUCCESS: Route optimized.', 'success');
+                } else if (data.error) {
+                     log(`ERROR: ${data.error}`, 'error');
                 } else {
                     reportSection.style.display = 'block';
                     reportContent.innerHTML = `<p class="log-error">No feasible route found. All paths are blocked.</p>`;
                     log('ERROR: Goal unreachable.', 'error');
                 }
                 loadingOverlay.style.display = 'none';
-            }, data.logs.length * 150 + 500);
+            }, (data.logs ? data.logs.length * 150 : 0) + 500);
 
         } catch (err) {
             console.error(err);
             loadingOverlay.style.display = 'none';
+            log('System Error: Check console for details.', 'error');
         }
     });
 
