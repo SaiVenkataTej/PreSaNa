@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PreSaNa | Agent Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>PreSaNa</h1>
+            <p class="subtitle">Mesh Network Routing with Linear Regression Weights</p>
+        </header>
+
+        <div class="main-grid">
+            <!-- Left: Connections Dashboard -->
+            <section class="card dashboard">
+                <h2><i class="icon">📊</i> Network Status</h2>
+                <div class="table-container">
+                    <table id="network-table">
+                        <thead>
+                            <tr>
+                                <th>Connection</th>
+                                <th>Dist (km)</th>
+                                <th>Traffic</th>
+                                <th>Quality</th>
+                                <th>Status</th>
+                                <th>Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="weights-info" id="weights-info">
+                    <!-- Learned weights info -->
+                </div>
+            </section>
+
+            <!-- Right: Control & Output -->
+            <div class="sidebar">
+                <section class="card control-panel">
+                    <h2><i class="icon">⚙️</i> Controls</h2>
+                    <div class="control-group">
+                        <label for="start-node">Start Node</label>
+                        <select id="start-node">
+                            <option value="A">Node A</option>
+                            <option value="B">Node B</option>
+                            <option value="C">Node C</option>
+                            <option value="D">Node D</option>
+                            <option value="E">Node E</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="dest-node">Destination</label>
+                        <select id="dest-node">
+                            <option value="E">Node E</option>
+                            <option value="A">Node A</option>
+                            <option value="B">Node B</option>
+                            <option value="C">Node C</option>
+                            <option value="D">Node D</option>
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button id="run-btn" class="primary-btn">Run Agent</button>
+                        <button id="randomize-btn" class="secondary-btn">Randomize Data</button>
+                        <button id="end-btn" class="danger-btn">End Simulation</button>
+                    </div>
+                </section>
+
+                <section class="card animation-card">
+                    <h2><i class="icon">🧠</i> Agent Thought Process</h2>
+                    <div id="console" class="console-area">
+                        <p class="placeholder">Click "Run Agent" to start...</p>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <section class="card report-section" id="report-section" style="display: none;">
+            <h2><i class="icon">🏁</i> Final Dispatch Report</h2>
+            <div id="report-content"></div>
+        </section>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="overlay" style="display: none;">
+        <div class="loader"></div>
+        <p>PreSaNa is thinking...</p>
+    </div>
+
+    <!-- Final Thank You Screen -->
+    <div id="end-screen" class="overlay" style="display: none;">
+        <div class="card thank-you-card">
+            <h1>Thank You!</h1>
+            <p class="subtitle">Simulation Ended Successfully</p>
+
+            <div class="user-details">
+                <p class="dev-name">Somavarapu Sai Venkata Teja</p>
+                <div class="social-links">
+                    <div class="profile-info">
+                        <strong>LinkedIn:</strong>
+                        <a href="https://www.linkedin.com/in/sai-venkata-teja-somavarapu-45a3a6290/" target="_blank">Sai
+                            Venkata Teja Somavarapu</a>
+                    </div>
+                    <div class="profile-info">
+                        <strong>GitHub:</strong>
+                        <a href="https://github.com/SaiVenkataTej" target="_blank">@SaiVenkataTej</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="qr-container">
+                <p>Scan to view Repository</p>
+                <div class="qr-placeholder">
+                    <img src="{{ url_for('static', filename='images/repo_qr.png') }}" alt="GitHub QR Code"
+                        id="github-qr">
+                </div>
+            </div>
+
+            <button onclick="window.location.reload()" class="primary-btn">Restart Simulation</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>
