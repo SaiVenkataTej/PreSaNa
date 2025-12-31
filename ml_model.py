@@ -1,69 +1,89 @@
 """
-PreSaNa
-Handles synthetic data generation, model training (Linear & Random Forest), and artifact export.
+Machine Learning Training Module
+Responsible for generating synthetic data and training regression models.
+Refactored for Modularity and consistency with Core Config.
 """
-import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
+import numpy as np
 import json
 import joblib
-import os
+import logging
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from core.config import settings
 
-def generate_training_data(n_samples=500):
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+def generate_training_data(n_samples: int = 500) -> pd.DataFrame:
     """
-    Generates a synthetic dataset for the PreSaNa routing model.
-    Models the relationship between road metrics and transport cost.
+    Generates synthetic training data based on the formula:
+    Cost = (w_dist * distance) + (w_traffic * traffic/100) + (w_quality_inv * (11-quality)) + Noise
     """
-    # Features: Distance (km), Traffic Congestion (%), and Surface Quality (1-10)
+    np.random.seed(42)
+    
+    # Feature Generation
     distance = np.random.randint(10, 100, n_samples)
     traffic = np.random.randint(0, 100, n_samples)
-    quality = np.random.randint(1, 11, n_samples)
+    quality = np.random.randint(1, 10, n_samples)
     
-    # Target Formula: w_dist*0.3 + w_traffic*0.5 + w_quality*(11-q)
-    noise = np.random.normal(0, 1, n_samples)
-    cost = (distance * 0.3) + (traffic * 0.5) + ((11 - quality) * 0.2) + noise
+    # Target Calculation (Cost)
+    # Using weights defined in centralised config
+    w_d = settings.DEFAULT_WEIGHTS['w_distance']
+    w_t = settings.DEFAULT_WEIGHTS['w_traffic']
+    w_q = settings.DEFAULT_WEIGHTS['w_quality_inv']
     
+    # Cost formula
+    # Note: traffic is normalized /100 in the formula logic but coefficients handle scale
+    # Let's align with the original logic: Traffic (0-100) * 0.5 can be high cost.
+    
+    cost = (w_d * distance) + \
+           (w_t * traffic) + \
+           (w_q * (11 - quality)) + \
+           np.random.normal(0, 5, n_samples)  # Gaussian Noise
+           
     df = pd.DataFrame({
         'distance': distance,
         'traffic': traffic,
-        'quality': quality,
-        'cost': cost
+        'quality_inv': 11 - quality,
+        'cost': np.round(cost, 2)
     })
+    
     return df
 
 def train_and_export():
     """
-    Trains Linear Regression and Random Forest models.
-    Exports trained models (.pkl) and metadata (.json).
+    Main execution pipeline:
+    1. Generate Data
+    2. Train Models (Linear + Random Forest)
+    3. Export Artifacts (Models + Metadata) to configured paths
     """
-    print("PreSaNa: Generating synthetic training data...")
+    logger.info("Generating synthetic data...")
     df = generate_training_data()
     
-    # Preprocessing
-    # We transform quality to 'inverse quality' for the linear relationship we want: (11-quality)
-    X = df[['distance', 'traffic', 'quality']].copy()
-    X['quality_inv'] = 11 - X['quality']
-    
-    # Feature set for models: distance, traffic, quality_inv
-    X_train = X[['distance', 'traffic', 'quality_inv']]
+    X_train = df[['distance', 'traffic', 'quality_inv']]
     y_train = df['cost']
     
     # --- Linear Regression ---
-    print("PreSaNa: Training Linear Regression model...")
+    logger.info("Training Linear Regression model...")
     linear_model = LinearRegression()
     linear_model.fit(X_train, y_train)
     
     # --- Random Forest ---
-    print("PreSaNa: Training Random Forest model...")
+    logger.info("Training Random Forest model...")
     rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
     rf_model.fit(X_train, y_train)
     
     # --- Export Models ---
-    print("PreSaNa: Exporting models...")
-    joblib.dump(linear_model, 'model_artifacts/linear_model.pkl')
-    joblib.dump(rf_model, 'model_artifacts/rf_model.pkl')
-    
+    logger.info(f"Exporting models to {settings.ARTIFACTS_DIR}...")
+    try:
+        joblib.dump(linear_model, settings.LINEAR_MODEL_PATH)
+        joblib.dump(rf_model, settings.RF_MODEL_PATH)
+    except Exception as e:
+        logger.error(f"Failed to save models: {e}")
+        return
+
     # --- Export Metadata ---
     metadata = {
         'linear': {
@@ -81,10 +101,12 @@ def train_and_export():
         }
     }
     
-    with open('model_artifacts/model_metadata.json', 'w') as f:
-        json.dump(metadata, f, indent=4)
-    
-    print("Training complete. Models and metadata exported.")
+    try:
+        with open(settings.METADATA_PATH, 'w') as f:
+            json.dump(metadata, f, indent=4)
+        logger.info("Metadata exported successfully.")
+    except Exception as e:
+        logger.error(f"Failed to save metadata: {e}")
 
 if __name__ == "__main__":
     train_and_export()
