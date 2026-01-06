@@ -5,11 +5,17 @@ Focuses on Modularity, Testability, and Code Readability.
 """
 import random
 import logging
+import heapq
+from dataclasses import dataclass
 import pandas as pd
 from typing import List, Dict, Tuple, Optional, Any
-from dataclasses import dataclass, field
-from .config import settings
-from .loader import loader
+
+try:
+    from .config import settings
+    from .loader import loader
+except ImportError:
+    from config import settings
+    from loader import loader
 
 logger = logging.getLogger(__name__)
 
@@ -78,63 +84,102 @@ class GoalBasedAgent:
         try:
             model = loader.get_model(model_type)
             if not model:
-                logger.error(f"Model type '{model_type}' not available.")
+                logger.error("Model type '%s' not available.", model_type)
                 return float('inf')
             
-            cost = model.predict(features)[0]
+            cost = max(0.0, model.predict(features)[0])
             return round(float(cost), 2)
-        except Exception as e:
-            logger.error(f"Prediction failed for {start}->{end}: {str(e)}")
+        except (ValueError, IndexError, AttributeError) as e:
+            logger.error("Prediction failed for %s->%s: %s", start, end, str(e))
             return float('inf')
 
     def find_best_route(self, start: str, dest: str, model_type: str = 'linear') -> Tuple[Optional[Dict[str, Any]], List[str]]:
         """
-        Executes the search strategy to find the optimal path.
-        Currently implements a depth-limited search (Direct + 1-Hop).
-        
-        Returns:
-            Tuple containing:
-            - Best route object (dict) or None
-            - List of execution logs (for XAI)
+        Executes Dijkstra's algorithm to find the optimal path.
+        Traverses the graph based on costs predicted by the ML model.
         """
         logs = []
-        possible_paths = []
+        logs.append(f"Goal: {start} -> {dest} | Strategy: Dijkstra | Model: {model_type.upper()}")
         
-        logs.append(f"Goal: {start} -> {dest} | Strategy: Minimize Cost | Model: {model_type.upper()}")
-        
-        # 1. Evaluate Direct Path
-        cost = self._predict_cost(start, dest, model_type)
-        if cost < float('inf'):
-            possible_paths.append({'path': [start, dest], 'cost': cost})
-            logs.append(f"Evaluated Direct: {start}->{dest} | Cost: {cost}")
-        else:
-            logs.append(f"Evaluated Direct: {start}->{dest} | Status: BLOCKED/High Cost")
+        if start not in self.nodes or dest not in self.nodes:
+             logs.append(f"Error: Start or Destination node invalid. Valid nodes: {self.nodes}")
+             return None, logs
 
-        # 2. Evaluate 1-Stop Paths (Intermediate Nodes)
-        for mid in self.nodes:
-            if mid in (start, dest):
+        if start == dest:
+             logs.append(f"Start equals Destination. No movement required.")
+             return {'path': [start], 'cost': 0.0}, logs
+
+        # Build adjacency graph
+        graph = {node: [] for node in self.nodes}
+        for u, v in self.connections:
+            graph[u].append(v)
+            graph[v].append(u)
+
+        # Priority Queue: (current_total_cost, current_node)
+        queue = [(0.0, start)]
+        
+        # Track distances and path reconstruction
+        min_dist = {node: float('inf') for node in self.nodes}
+        min_dist[start] = 0.0
+        predecessors = {node: None for node in self.nodes}
+        visited = set()
+
+        while queue:
+            current_cost, current_node = heapq.heappop(queue)
+
+            # Optimization: If we reached the destination with shortest path, we can stop
+            # specific to Dijkstra (heuristic algorithms like A* would differ)
+            if current_node == dest:
+                break
+            
+            # If current path is worse than already found shortest path, skip
+            if current_cost > min_dist[current_node]:
                 continue
             
-            c1 = self._predict_cost(start, mid, model_type)
-            c2 = self._predict_cost(mid, dest, model_type)
-            
-            if c1 < float('inf') and c2 < float('inf'):
-                total_cost = round(c1 + c2, 2)
-                possible_paths.append({'path': [start, mid, dest], 'cost': total_cost})
-                logs.append(f"Evaluated Path: {start}->{mid}->{dest} | Cost: {total_cost}")
-            else:
-                # logs.append(f"Path through {mid} infeasible.") # Reduce noise
-                pass
+            if current_node in visited:
+                continue
+            visited.add(current_node)
 
-        # 3. Decision Making
-        if not possible_paths:
-            logs.append("No feasible solution found.")
+            for neighbor in graph.get(current_node, []):
+                if neighbor in visited:
+                    continue
+
+                # Calculate dynamic edge cost using the model
+                edge_cost = self._predict_cost(current_node, neighbor, model_type)
+                
+                if edge_cost == float('inf'):
+                    # Road Blocked or Invalid
+                    continue
+                
+                new_cost = current_cost + edge_cost
+                
+                if new_cost < min_dist[neighbor]:
+                    min_dist[neighbor] = new_cost
+                    predecessors[neighbor] = current_node
+                    heapq.heappush(queue, (new_cost, neighbor))
+                    logs.append(f"Path update: {current_node}->{neighbor} | New cost to {neighbor}: {new_cost:.2f}")
+
+        # Reconstruct Path
+        if min_dist[dest] == float('inf'):
+            logs.append("No feasible solution found (Destination unreachable).")
             return None, logs
 
-        best_route = min(possible_paths, key=lambda x: x['cost'])
-        logs.append(f"Optimal Decision: {best_route['path']} with Cost {best_route['cost']}")
+        path = []
+        curr = dest
+        while curr is not None:
+            path.append(curr)
+            curr = predecessors[curr]
+        path.reverse()
+
+        # Sanity check
+        if path[0] != start:
+             logs.append("Critical Error: Path reconstruction failed.")
+             return None, logs
+
+        final_cost = round(min_dist[dest], 2)
+        logs.append(f"Optimal Decision: Path {path} with Total Cost {final_cost}")
         
-        return best_route, logs
+        return {'path': path, 'cost': final_cost}, logs
 
     def get_network_state(self) -> Dict[str, Any]:
         """Exposes the current environment state."""

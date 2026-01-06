@@ -25,10 +25,10 @@ The agent relies on several key functions to perform its task:
 - **Cost Calculation (Learned Utility)**: Uses the learned weights to calculate cost:
   $$Cost = w_1 \times Distance + w_2 \times Traffic + w_3 \times (11 - Quality) + Intercept$$
   - **Infinite Penalty**: If a road is `Blocked`, the cost is set to `999,999`.
-- **Decision Logic (Search)**: Iterates through all possible connections:
-    1. **Direct Routes**: Direct connections between Start and End.
-    2. **1-Stop Routes**: Routes that go through one intermediate node (Start -> Mid -> End).
-- **Execution Function**: Selects the route with the minimum total cost and reports the path to the user.
+- **Decision Logic (Search)**: Uses **Dijkstra's Algorithm** to find the global optimum path.
+    1. **Graph Traversal**: Explores all possible paths from Start to End.
+    2. **Cost Minimization**: Accumulates edge weights (predicted costs) to ensure the final path has the lowest possible total cost.
+- **Execution Function**: Returns the full path sequence (e.g., A->D->E) and the total cost.
 
 ## 4. Environment
 The environment is the **Mesh Network** consisting of 5 nodes (A, B, C, D, E).
@@ -47,6 +47,6 @@ The environment is the **Mesh Network** consisting of 5 nodes (A, B, C, D, E).
 ## 6. System Limitations
 While effective as a prototype, the current system has specific constraints:
 - **Fixed Network Topology**: The mesh is hardcoded to 5 nodes (A-E). Adding new nodes requires valid code changes to the configuration.
-- **Limited Search Depth**: The pathfinding logic currently evaluates only **Direct** and **1-Hop** routes. It will not find complex paths involving 3 or more stops.
+
 - **Synthetic Training Data**: The ML models are trained on simulated data. Real-world physics (like weather impact on road quality) are not modeled.
 - **Static Edge Connections**: While weights (traffic/distance) are dynamic, the physical road connections are static.

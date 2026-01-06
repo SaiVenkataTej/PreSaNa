@@ -132,13 +132,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     const path = data.best.path.join(' ➔ ');
                     reportContent.innerHTML = `
                         <p>PreSaNa has concluded its search.</p>
-                        <p>Optimal Route Found: <strong>${path}</strong></p>
+                        <p>Global Optimal Route: <strong>${path}</strong></p>
                         <p>Total Estimated Cost: <strong>${data.best.cost}</strong></p>
                         <p style="margin-top: 1rem; font-size: 0.9rem; color: #94a3b8;">
-                            Route optimized using <strong>${modelType === 'linear' ? 'Linear Regression' : 'Random Forest'}</strong> logic.
+                            Path verified using <strong>Dijkstra's Algorithm</strong> weighted by 
+                            <strong>${modelType === 'linear' ? 'Linear Regression' : 'Random Forest'}</strong> predictions.
                         </p>
                     `;
-                    log('SUCCESS: Route optimized.', 'success');
+                    log('SUCCESS: Global Optimum Found.', 'success');
                 } else if (data.error) {
                      log(`ERROR: ${data.error}`, 'error');
                 } else {

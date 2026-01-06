@@ -22,7 +22,7 @@ The project follows a highly modular Client-Server architecture, designed for Mo
 The `GoalBasedAgent` class is now a pure Python object, independent of Flask.
 - **Perception**: "Sees" attributes of every connection (Distance, Traffic, Blocked status).
 - **Inference**: Uses `core/loader.py` to retrieve the active model and predict edge costs.
-- **Search Strategy**: Evaluates Direct vs. 1-Stop paths to seek global optima.
+- **Search Strategy**: Uses **Dijkstra's Algorithm** to traverse the graph and find the path with the minimum accumulated cost.
 
 ### B. Machine Learning Module (`ml_model.py`)
 Optimized for consistency:
@@ -47,13 +47,13 @@ Optimized for consistency:
 ## 5. System Limitations
 Current implementation constraints to be addressed in future versions:
 - **Scalability**: Graph topology (5 nodes) is hardcoded; implementation of dynamic graph structures is required for N-node scaling.
-- **Recursive Search**: Agent currently lacks recursive pathfinding (e.g., A* or Dijkstra), limiting it to 1-hop solutions.
+
 - **Simulation Bias**: All training data is synthetic, which may not capture the stochastic nature of real-world logistics (weather, accidents).
 - **Single-Threaded**: The agent operates as a single entity; multi-agent coordination is not currently supported.
 
 ## 6. Future Enhancements / Roadmap
 
-1.  **Graph Expansion**: Scale from 5 nodes to $N$ nodes using algorithms like Dijkstra or A* for pathfinding.
+1.  **Graph Expansion**: Scale from 5 nodes to $N$ nodes (now supported by current pathfinding logic, requires config updates).
 2.  **Real-Time Learning**: Implement Reinforcement Learning (RL) where the agent updates its weights based on "feedback" from completed trips.
 3.  **Visual Graph Rendering**: Use a library like D3.js or Cytoscape.js to render the network as an interactive node-link diagram instead of a table.
 
