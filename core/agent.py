@@ -1,7 +1,6 @@
 """
 Core Agent Module
 Implements the Goal-Based Agent logic.
-Focuses on Modularity, Testability, and Code Readability.
 """
 import random
 import logging

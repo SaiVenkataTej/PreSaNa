@@ -230,6 +230,11 @@ button {
     to { text-shadow: 0 0 15px rgba(56, 189, 248, 0.6); }
 }
 
+@keyframes glowPulse {
+    from { text-shadow: 0 0 5px rgba(56, 189, 248, 0.2); }
+    to { text-shadow: 0 0 15px rgba(56, 189, 248, 0.6); }
+}
+
 .weights-info {
     margin-top: 2rem;
     padding: 1rem;
